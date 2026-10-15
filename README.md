@@ -4,6 +4,36 @@ Automatische Installationsscripts für FamTask auf Proxmox VE (VM oder LXC Conta
 
 **Dieses Repo enthält nur die Installer-Scripts.** Die eigentliche Installation klont das **famtask_docker** Repo und führt dort das Setup aus.
 
+---
+
+## ⚠️ Bekannter Fehler: Compose-Pfad
+
+Die Scripts in diesem Repo rufen `docker/docker-compose.yml` auf.
+**Diese Datei existiert nicht.** Die Compose-Datei liegt im Repository-Stamm von
+`famtask_docker`, also `docker-compose.yml` ohne `docker/` davor.
+
+Zusätzlich liest `famtask_docker/scripts/setup.sh` die `.env` aus
+`docker/.env`, während Docker Compose standardmässig `.env` aus dem
+Arbeitsverzeichnis erwartet.
+
+**Konsequenz:** Der hier dokumentierte Installationspfad ist derzeit **nicht
+als funktionierend verifiziert.** Er wurde am 2026-10-15 am Dateisystem geprüft und
+in dieser Form nicht korrigiert.
+
+### Korrekte Befehle (manuell)
+
+```bash
+cd /opt/famtask_docker
+cp docker/.env.example docker/.env     # Passwörter anpassen
+docker compose up -d --build           # ohne -f, Compose liegt im Stamm
+bash scripts/setup.sh
+```
+
+Geprüft am 2026-10-15. Details in
+[WORKSPACE_COMPARISON.md](https://github.com/nanoemilios/famtask_docs/blob/main/WORKSPACE_COMPARISON.md).
+
+---
+
 ## Variante 1: One-Liner (schnellste Methode)
 
 Direkt auf der Proxmox-Shell (oder in einer VM/CT) ausführen:
@@ -11,6 +41,8 @@ Direkt auf der Proxmox-Shell (oder in einer VM/CT) ausführen:
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/nanoemilios/famtask_proxmox/main/proxmox-install-oneliner.sh)
 ```
+
+> **Achtung:** Der One-Liner ist vom oben beschriebenen Pfadfehler betroffen.
 
 ---
 
@@ -59,7 +91,7 @@ bash proxmox-install.sh
 ```bash
 cd /opt/famtask_docker
 git pull                                    # Docker-Repo aktualisieren
-docker compose -f docker/docker-compose.yml up -d --build  # Container neu bauen
+docker compose up -d --build  # Container neu bauen
 bash scripts/setup.sh                       # App-Repo aktualisieren & Config neu erstellen
 ```
 
@@ -69,7 +101,7 @@ bash scripts/setup.sh                       # App-Repo aktualisieren & Config ne
 
 ```bash
 cd /opt/famtask_docker
-docker compose -f docker/docker-compose.yml down -v
+docker compose down -v
 rm -rf /opt/famtask_docker
 # Optional: rm -rf /opt/famtask_proxmox
 ```
@@ -112,7 +144,7 @@ Oder in der Web-GUI: **Datacenter → Firewall → Regeln hinzufügen**.
 **Container starten nicht?**
 ```bash
 cd /opt/famtask_docker
-docker compose -f docker/docker-compose.yml logs -f
+docker compose logs -f
 ```
 
 **Passwort vergessen?**
@@ -123,8 +155,8 @@ cat /opt/famtask_docker/docker/.env
 **Datenbank zurücksetzen (ACHTUNG: Datenverlust!):**
 ```bash
 cd /opt/famtask_docker
-docker compose -f docker/docker-compose.yml down -v
-docker compose -f docker/docker-compose.yml up -d
+docker compose down -v
+docker compose up -d
 bash scripts/setup.sh
 ```
 
