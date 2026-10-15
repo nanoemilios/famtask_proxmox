@@ -24,6 +24,16 @@ log() { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 err() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
+# ── Compose aufrufen ──────────────────────────────────────────────────────
+# Die Compose-Datei liegt im Repository-Stamm (nicht in docker/), und die
+# .env wird bewusst unter docker/ abgelegt - deshalb wird sie hier
+# explizit ueber --env-file uebergeben. Ohne das findet Compose weder
+# die Datei noch die Zugangsdaten.
+dc() {
+    cd "$INSTALL_DIR"
+    docker compose --env-file docker/.env "$@"
+}
+
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         err "Bitte als root ausführen (sudo bash proxmox-install.sh)"
@@ -67,9 +77,18 @@ clone_or_update_repo() {
 }
 
 create_env_file() {
+    local env_file="$INSTALL_DIR/docker/.env"
+
+    # Bestehende .env niemals ueberschreiben: neue Passwoerter wuerden die
+    # Datenbank von einer bestehenden Installation abschneiden.
+    if [[ -f "$env_file" ]]; then
+        log ".env existiert bereits, Passwörter bleiben unverändert"
+        chmod 600 "$env_file" || true
+        return
+    fi
+
     local db_pass=$(generate_password)
     local db_root_pass=$(generate_password)
-    local env_file="$INSTALL_DIR/docker/.env"
 
     log "Erstelle .env mit sicheren Passwörtern..."
     cat > "$env_file" <<EOF
@@ -88,9 +107,8 @@ EOF
 
 start_containers() {
     log "Starte Container..."
-    cd "$INSTALL_DIR/docker"
-    docker compose pull
-    docker compose up -d
+    dc pull
+    dc up -d
     log "Container gestartet"
 }
 
@@ -118,20 +136,28 @@ run_app_setup() {
 
 print_summary() {
     local ip=$(hostname -I | awk '{print $1}')
+    # Ports aus der .env lesen, damit die Angaben auch nach einer Anpassung stimmen
+    local env_file="$INSTALL_DIR/docker/.env"
+    local app_port pma_port
+    app_port=$(grep -E '^APP_PORT=' "$env_file" 2>/dev/null | cut -d= -f2 || true)
+    pma_port=$(grep -E '^PMA_PORT=' "$env_file" 2>/dev/null | cut -d= -f2 || true)
+    app_port=${app_port:-$APP_PORT}
+    pma_port=${pma_port:-$PMA_PORT}
+
     echo
     echo "=========================================="
     echo -e "${GREEN}FamTask erfolgreich installiert!${NC}"
     echo "=========================================="
-    echo -e "App:        http://$ip:$APP_PORT"
-    echo -e "Admin:      http://$ip:$APP_PORT/?action=admin"
-    echo -e "phpMyAdmin: http://$ip:$PMA_PORT"
+    echo -e "App:        http://$ip:$app_port"
+    echo -e "Admin:      http://$ip:$app_port/?action=admin"
+    echo -e "phpMyAdmin: http://$ip:$pma_port"
     echo
-    echo "Config:     $INSTALL_DIR/docker/.env"
+    echo "Config:     $env_file"
     echo "App-Config: $INSTALL_DIR/my/.famtask_cfg.php"
     echo
-    echo "Logs:       docker compose -f $INSTALL_DIR/docker/docker-compose.yml logs -f"
-    echo "Stop:       docker compose -f $INSTALL_DIR/docker/docker-compose.yml down"
-    echo "Update:     cd $INSTALL_DIR && git pull && docker compose -f docker/docker-compose.yml up -d --build && bash scripts/setup.sh"
+    echo "Logs:       cd $INSTALL_DIR && docker compose --env-file docker/.env logs -f"
+    echo "Stop:       cd $INSTALL_DIR && docker compose --env-file docker/.env down"
+    echo "Update:     cd $INSTALL_DIR && git pull && docker compose --env-file docker/.env up -d --build && bash scripts/setup.sh"
     echo "=========================================="
 }
 

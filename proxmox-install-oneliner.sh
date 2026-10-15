@@ -38,10 +38,17 @@ cd "$INSTALL_DIR"
 
 log "Generiere Passwörter..."
 gen_pass() { tr -dc 'A-Za-z0-9!#%&' </dev/urandom | head -c 24; }
-DB_PASS=$(gen_pass)
-DB_ROOT_PASS=$(gen_pass)
 
-cat > docker/.env <<EOF
+# Bestehende .env niemals ueberschreiben: neue Passwoerter wuerden die
+# Datenbank von einer bestehenden Installation abschneiden.
+if [[ -f docker/.env ]]; then
+  log ".env existiert bereits, Passwörter bleiben unverändert"
+  chmod 600 docker/.env || true
+else
+  DB_PASS=$(gen_pass)
+  DB_ROOT_PASS=$(gen_pass)
+  cat > docker/.env <<EOF
+# FamTask Docker Konfiguration - automatisch generiert am $(date)
 DB_NAME=famtask
 DB_USER=famtask
 DB_PASS=$DB_PASS
@@ -50,11 +57,21 @@ APP_PORT=$APP_PORT
 PMA_PORT=$PMA_PORT
 DB_PORT=$DB_PORT
 EOF
-chmod 600 docker/.env
+  chmod 600 docker/.env
+fi
 
+# Ports und DB-Passwort aus der .env lesen, damit die Angaben auch nach
+# einer Anpassung stimmen. Die Datei liegt unter docker/, nicht im Stamm.
+set -a
+. ./docker/.env
+set +a
+DB_ROOT_PASS=${DB_ROOT_PASS:-$(gen_pass)}
+
+# Die Compose-Datei liegt im Repository-Stamm, die .env unter docker/.
+# Deshalb wird sie explizit ueber --env-file uebergeben.
 log "Starte Container..."
-docker compose -f docker/docker-compose.yml pull
-docker compose -f docker/docker-compose.yml up -d
+docker compose --env-file docker/.env pull
+docker compose --env-file docker/.env up -d
 
 log "Warte auf DB..."
 for i in {1..60}; do

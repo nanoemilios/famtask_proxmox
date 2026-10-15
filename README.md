@@ -6,26 +6,38 @@ Automatische Installationsscripts für FamTask auf Proxmox VE (VM oder LXC Conta
 
 ---
 
-## ⚠️ Bekannter Fehler: Compose-Pfad
+## ✅ Behobener Fehler: Compose-Pfad
 
-Die Scripts in diesem Repo rufen `docker/docker-compose.yml` auf.
-**Diese Datei existiert nicht.** Die Compose-Datei liegt im Repository-Stamm von
+Die Scripts in diesem Repo riefen `docker/docker-compose.yml` auf.
+**Diese Datei existiert nicht** – die Compose-Datei liegt im Repository-Stamm von
 `famtask_docker`, also `docker-compose.yml` ohne `docker/` davor.
 
-Zusätzlich liest `famtask_docker/scripts/setup.sh` die `.env` aus
+Zusätzlich las `famtask_docker/scripts/setup.sh` die `.env` aus
 `docker/.env`, während Docker Compose standardmässig `.env` aus dem
-Arbeitsverzeichnis erwartet.
+Arbeitsverzeichnis erwartet: die hinterlegten Passwörter wären stillschweigend
+ignoriert worden.
 
-**Konsequenz:** Der hier dokumentierte Installationspfad ist derzeit **nicht
-als funktionierend verifiziert.** Er wurde am 2026-10-15 am Dateisystem geprüft und
-in dieser Form nicht korrigiert.
+**Beides ist am 2026-10-15 behoben:**
 
-### Korrekte Befehle (manuell)
+- Compose wird aus dem Repository-Stamm aufgerufen, die `.env` explizit über
+  `--env-file docker/.env` übergeben
+- `APP_PORT`, `PMA_PORT` und `DB_PORT` werden von `docker-compose.yml` nun
+  tatsächlich ausgewertet – vorher waren die Ports hart codiert und Änderungen
+  in der `.env` wirkungslos, während die Abschlussmeldung sie trotzdem anzeigte
+- `create_env_file` überschreibt eine vorhandene `.env` nicht mehr; bei einem
+  Update bleiben die Datenbankpasswörter erhalten
+- Die Abschlussmeldung liest die Ports aus der `.env`
+
+Damit ist der dokumentierte Installationspfad wieder konsistent. Die Prüfung
+erfolgte gegen das Dateisystem und `bash -n`; ein Durchlauf auf einem echten
+Proxmox-Host steht weiterhin aus.
+
+### Befehle
 
 ```bash
 cd /opt/famtask_docker
 cp docker/.env.example docker/.env     # Passwörter anpassen
-docker compose up -d --build           # ohne -f, Compose liegt im Stamm
+docker compose --env-file docker/.env up -d --build
 bash scripts/setup.sh
 ```
 
@@ -42,7 +54,8 @@ Direkt auf der Proxmox-Shell (oder in einer VM/CT) ausführen:
 bash <(curl -fsSL https://raw.githubusercontent.com/nanoemilios/famtask_proxmox/main/proxmox-install-oneliner.sh)
 ```
 
-> **Achtung:** Der One-Liner ist vom oben beschriebenen Pfadfehler betroffen.
+> Der One-Liner wurde am 2026-10-15 auf denselben Compose-Aufruf umgestellt wie
+> `proxmox-install.sh`. Er überschreibt ebenfalls keine vorhandene `.env`.
 
 ---
 

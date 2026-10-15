@@ -6,30 +6,36 @@ Automatische Installationsscripts für FamTask auf Proxmox VE (VM oder LXC Conta
 
 ---
 
-## ⚠️ Bekannter Fehler in den Scripts
+## ✅ Behobener Fehler in den Scripts
 
-Die Scripts in diesem Repo rufen `docker/docker-compose.yml` auf.
-**Diese Datei existiert nicht** – die Compose-Datei liegt im Repository-Stamm von
-`famtask_docker`, also `docker-compose.yml` ohne `docker/` davor.
+Die Scripts riefen `docker/docker-compose.yml` auf. **Diese Datei existiert
+nicht** – die Compose-Datei liegt im Repository-Stamm von `famtask_docker`,
+also `docker-compose.yml` ohne `docker/` davor. Ausserdem las
+`famtask_docker/scripts/setup.sh` die `.env` aus `docker/.env`, während Compose
+standardmässig `.env` aus dem Arbeitsverzeichnis erwartet; die Passwörter wären
+stillschweigend ignoriert worden.
 
-Zusätzlich liest `famtask_docker/scripts/setup.sh` die `.env` aus `docker/.env`,
-während Docker Compose standardmässig `.env` aus dem Arbeitsverzeichnis erwartet.
+**Behoben am 2026-10-15:**
 
-**Die Befehle in dieser Datei wurden am 2026-10-15 auf die korrekte Form
-gebracht** (`docker compose …` statt `docker compose -f docker/docker-compose.yml …`).
-Die Scripts `proxmox-install.sh` und `proxmox-install-oneliner.sh` selbst sind
-**noch nicht** angepasst. Wer sie benutzt, muss den Compose-Aufruf korrigieren
-oder den Container von Hand starten:
+- `proxmox-install.sh` und `proxmox-install-oneliner.sh` rufen Compose aus dem
+  Repository-Stamm auf und übergeben die `.env` über `--env-file docker/.env`
+- `docker-compose.yml` wertet `APP_PORT`, `PMA_PORT` und `DB_PORT` jetzt
+  tatsächlich aus – vorher waren die Ports hart codiert
+- Vorhandene `.env` wird nicht mehr überschrieben, damit ein Update nicht die
+  Datenbankpasswörter zerstört
+- Die Befehle in diesem Dokument wurden ebenfalls auf `--env-file` umgestellt
+
+Die Korrektur wurde gegen das Dateisystem und mit `bash -n` geprüft, **nicht** auf
+einem echten Proxmox-Host.
+
+Wer die Scripts manuell nutzt:
 
 ```bash
 cd /opt/famtask_docker
 cp docker/.env.example docker/.env
-docker compose up -d --build
+docker compose --env-file docker/.env up -d --build
 bash scripts/setup.sh
 ```
-
-Details in
-[WORKSPACE_COMPARISON.md](https://github.com/nanoemilios/famtask_docs/blob/main/WORKSPACE_COMPARISON.md).
 
 ---
 
