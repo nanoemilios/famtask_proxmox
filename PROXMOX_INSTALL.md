@@ -6,6 +6,24 @@ Automatische Installationsscripts für FamTask auf Proxmox VE (VM oder LXC Conta
 
 ---
 
+## 🆕 Neu am 2026-11-01
+
+- **`proxmox-install-ct.sh`** erstellt den LXC-Container direkt auf dem
+  Proxmox-Host (Debian, unprivilegiert, `nesting=1`, `keyctl=1`), spielt alle
+  System-Updates ein und installiert FamTask im Container – siehe Variante 0.
+- **Passwort-Generierung** brach unter `set -o pipefail` ab (`tr … | head -c`
+  → SIGPIPE); jetzt ohne `head` am Pipeline-Ende.
+- **`((count++))`** in `wait_for_db` beendete das Script unter `set -e` beim
+  ersten Durchlauf – jetzt `count=$((count + 1))`.
+- **Docker-Repository** fällt bei fehlendem Codename automatisch auf
+  `bookworm` zurück.
+- **Port-Auswahl:** `proxmox-install.sh` fragt den App-Port ab (Enter = 8888)
+  und akzeptiert `--port` / `--pma-port` / `--db-port`; der One-Liner ebenso.
+  Explizit gesetzte Ports werden auch in einer bestehenden `docker/.env`
+  aktualisiert.
+
+---
+
 ## ✅ Behobener Fehler in den Scripts
 
 Die Scripts riefen `docker/docker-compose.yml` auf. **Diese Datei existiert
@@ -39,12 +57,58 @@ bash scripts/setup.sh
 
 ---
 
+## Variante 0: LXC-Container automatisch erstellen (empfohlen)
+
+`proxmox-install-ct.sh` läuft auf dem **Proxmox-Host** und erstellt dort einen
+Debian-LXC-Container, aktualisiert das System im Container und installiert
+FamTask inkl. Docker. Docker läuft damit im Container – nicht auf dem Host.
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/nanoemilios/famtask_proxmox/main/proxmox-install-ct.sh)"
+```
+
+Ohne Rückfragen mit Standardwerten:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nanoemilios/famtask_proxmox/main/proxmox-install-ct.sh -o /root/famtask-ct.sh
+bash /root/famtask-ct.sh --default
+```
+
+Mit eigenen Werten (alle Optionen: `bash proxmox-install-ct.sh --help`):
+
+```bash
+bash /root/famtask-ct.sh --ctid 120 --hostname famtask --memory 4096 \
+     --cores 4 --disk 20 --storage local-lvm --bridge vmbr0 --ip dhcp
+```
+
+**Standardwerte:** Debian 13 (Fallback 12), 2 Kerne, 2048 MB RAM, 16 GB Disk,
+unprivilegiert, `nesting=1`, `keyctl=1`, DHCP, nächste freie CTID. Storage und
+Template-Storage werden automatisch erkannt, das Template bei Bedarf
+nachgeladen. Bei `--ip static` werden `--static-ip`, `--gw`, optional `--cidr`
+und `--dns` gesetzt. Das root-Passwort wird generiert und am Ende angezeigt;
+SSH-Keys des Hosts werden übernommen.
+
+Im Container läuft danach `proxmox-install.sh` (Docker, `.env`, Container,
+App-Setup). Update später:
+
+```bash
+pct exec <CTID> -- bash /root/proxmox-install.sh
+```
+
+---
+
 ## Variante 1: One-Liner (schnellste Methode)
 
 Direkt auf der Proxmox-Shell (oder in einer VM/CT) ausführen:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/nanoemilios/famtask_proxmox/main/proxmox-install-oneliner.sh)
+```
+
+Anderer Port (ohne Angabe wird der Port abgefragt, Enter = 8888):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/nanoemilios/famtask_proxmox/main/proxmox-install-oneliner.sh) --port 80
 ```
 
 ---
@@ -56,14 +120,19 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nanoemilios/famtask_proxmox/
 git clone https://github.com/nanoemilios/famtask_proxmox.git /opt/famtask_proxmox
 cd /opt/famtask_proxmox
 
-# 2. Installationsscript ausführen
+# 2. Installationsscript ausführen (fragt nach dem Port, Enter = 8888)
 bash proxmox-install.sh
+
+# oder ohne Rückfrage mit festem Port
+bash proxmox-install.sh --port 80 --yes
 ```
 
 ---
 
 ## Was das Script tut
 
+0. **Port abfragt** (Standard 8888; `--port <PORT>` überspringt die Frage und
+   aktualisiert bei einer bestehenden Installation auch `docker/.env`)
 1. **Docker & Docker Compose** installiert (falls nicht vorhanden)
 2. **Docker-Repo** (famtask_docker) klont/aktualisiert nach `/opt/famtask_docker`
 3. **Sichere Passwörter** generiert (24 Zeichen)
@@ -113,7 +182,15 @@ rm -rf /opt/famtask_docker
 
 ## Anpassung (vor Installation)
 
-Editieren Sie `proxmox-install.sh` oder `proxmox-install-oneliner.sh`:
+Die Ports müssen nicht mehr im Script geändert werden:
+
+```bash
+bash proxmox-install.sh --port 80 --pma-port 8081 --db-port 3307
+bash proxmox-install.sh            # fragt den App-Port ab
+```
+
+Alle Werte lassen sich auch als Umgebungsvariable setzen. Feste Vorgaben im
+Script (`proxmox-install.sh` / `proxmox-install-oneliner.sh`):
 
 ```bash
 DOCKER_REPO_URL="https://github.com/nanoemilios/famtask_docker.git"
@@ -171,18 +248,22 @@ git pull
 
 ---
 
-## LXC Container (Alternative zur VM)
+## LXC Container (manuell)
 
-Für bessere Performance können Sie FamTask in einem **unprivilegierten LXC Container** laufen lassen:
+Normalerweise übernimmt das `proxmox-install-ct.sh` (siehe Variante 0).
+Wer den Container lieber selbst anlegt:
 
-1. **CT erstellen:** Debian 12, 2 GB RAM, 2 CPU, 10 GB Disk
-2. **Features aktivieren:** Nesting=1, Keyctl=1
+1. **CT erstellen:** Debian 13 (oder 12), 2 GB RAM, 2 CPU, 16 GB Disk
+2. **Features aktivieren:** Nesting=1, Keyctl=1, Fuse=1
 3. **In CT:** One-Liner ausführen
 
 ```bash
 # Auf Proxmox-Host:
-pct set <CTID> -features nesting=1,keyctl=1
+pct set <CTID> -features nesting=1,keyctl=1,fuse=1
 ```
+
+`nesting` und `keyctl` sind für Docker nötig, `fuse` für Storage-Treiber wie
+`fuse-overlayfs` (z. B. wenn der Container auf ZFS liegt).
 
 ---
 
@@ -190,7 +271,8 @@ pct set <CTID> -features nesting=1,keyctl=1
 
 ```
 famtask_proxmox/         # Dieses Repo (nur Installer)
-├── proxmox-install.sh
+├── proxmox-install-ct.sh      # Erstellt den LXC-Container (auf dem Host)
+├── proxmox-install.sh         # Installation im Container/VM
 ├── proxmox-install-oneliner.sh
 └── PROXMOX_INSTALL.md
 
