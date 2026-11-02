@@ -9,12 +9,18 @@ set -euo pipefail
 DOCKER_REPO_URL="https://github.com/nanoemilios/famtask_docker.git"
 BRANCH="main"
 INSTALL_DIR="/opt/famtask_docker"
-APP_PORT="${APP_PORT:-8888}"
-PMA_PORT="${PMA_PORT:-8081}"
-DB_PORT="${DB_PORT:-3307}"
+APP_PORT="${APP_PORT:-}"
+PMA_PORT="${PMA_PORT:-}"
+DB_PORT="${DB_PORT:-}"
 PORT_SET=0
 PMA_SET=0
 DB_SET=0
+if [[ -n "$APP_PORT" ]]; then PORT_SET=1; fi
+if [[ -n "$PMA_PORT" ]]; then PMA_SET=1; fi
+if [[ -n "$DB_PORT" ]]; then DB_SET=1; fi
+APP_PORT="${APP_PORT:-8888}"
+PMA_PORT="${PMA_PORT:-8081}"
+DB_PORT="${DB_PORT:-3307}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -44,8 +50,18 @@ done
 # Ohne --port und mit Terminal wird der App-Port abgefragt.
 if [[ "$PORT_SET" == "0" && -t 0 ]]; then
     ANSWER=""
-    read -r -p "Port für FamTask [${APP_PORT}]: " ANSWER || ANSWER=""
-    [[ -n "$ANSWER" ]] && APP_PORT="$ANSWER"
+    while true; do
+        read -r -p "Port für FamTask [${APP_PORT}]: " ANSWER || ANSWER=""
+        if [[ -z "$ANSWER" ]]; then
+            break
+        fi
+        if [[ "$ANSWER" =~ ^[0-9]+$ ]] && (( ANSWER >= 1 && ANSWER <= 65535 )); then
+            APP_PORT="$ANSWER"
+            PORT_SET=1
+            break
+        fi
+        err "Bitte eine Zahl zwischen 1 und 65535 eingeben (Enter = ${APP_PORT})."
+    done
 fi
 
 for PORT in "$APP_PORT" "$PMA_PORT" "$DB_PORT"; do
@@ -145,8 +161,10 @@ log "Führe App-Setup aus (klont famtask Repo, erstellt Config)..."
 bash scripts/setup.sh
 
 IP=$(hostname -I | awk '{print $1}')
+APP_SUFFIX=""
+[[ "$APP_PORT" == "80" ]] || APP_SUFFIX=":$APP_PORT"
 echo -e "\n${GREEN}✓ Fertig!${NC}"
-echo "App:        http://$IP:$APP_PORT"
-echo "Admin:      http://$IP:$APP_PORT/?action=admin"
+echo "App:        http://$IP$APP_SUFFIX"
+echo "Admin:      http://$IP$APP_SUFFIX/?action=admin"
 echo "phpMyAdmin: http://$IP:$PMA_PORT"
 echo "Config:     $INSTALL_DIR/docker/.env"

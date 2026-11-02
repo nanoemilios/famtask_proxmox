@@ -13,17 +13,23 @@ DOCKER_REPO_URL="${DOCKER_REPO_URL:-https://github.com/nanoemilios/famtask_docke
 APP_REPO_URL="${APP_REPO_URL:-https://github.com/nanoemilios/famtask.git}"
 BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/famtask_docker}"
-APP_PORT="${APP_PORT:-8888}"
-PMA_PORT="${PMA_PORT:-8081}"
-DB_PORT="${DB_PORT:-3307}"
-# ====================================
 
-# Wurde ein Port explizit gesetzt? Dann wird auch eine bestehende .env
-# angepasst, statt den Wert stillschweigend zu ignorieren.
+# Wurde ein Port explizit gesetzt (Umgebungsvariable, Argument oder
+# Eingabe)? Dann wird auch eine bestehende .env angepasst, statt den
+# Wert stillschweigend zu ignorieren.
 PORT_SET=0
 PMA_SET=0
 DB_SET=0
 ASSUME_YES=0
+
+if [[ -n "${APP_PORT:-}" ]]; then PORT_SET=1; fi
+if [[ -n "${PMA_PORT:-}" ]]; then PMA_SET=1; fi
+if [[ -n "${DB_PORT:-}" ]]; then DB_SET=1; fi
+
+APP_PORT="${APP_PORT:-8888}"
+PMA_PORT="${PMA_PORT:-8081}"
+DB_PORT="${DB_PORT:-3307}"
+# ====================================
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -203,12 +209,15 @@ print_summary() {
     app_port=${app_port:-$APP_PORT}
     pma_port=${pma_port:-$PMA_PORT}
 
+    local app_suffix=""
+    [[ "$app_port" == "80" ]] || app_suffix=":$app_port"
+
     echo
     echo "=========================================="
     echo -e "${GREEN}FamTask erfolgreich installiert!${NC}"
     echo "=========================================="
-    echo -e "App:        http://$ip:$app_port"
-    echo -e "Admin:      http://$ip:$app_port/?action=admin"
+    echo -e "App:        http://$ip$app_suffix"
+    echo -e "Admin:      http://$ip$app_suffix/?action=admin"
     echo -e "phpMyAdmin: http://$ip:$pma_port"
     echo
     echo "Config:     $env_file"
@@ -272,16 +281,24 @@ parse_args() {
 
 prompt_ports() {
     # Kein Prompt bei --yes, ohne Terminal (z. B. pct exec) oder wenn der
-    # Port bereits per --port gesetzt wurde.
+    # Port bereits per --port/Umgebungsvariable gesetzt wurde.
     if [[ "$ASSUME_YES" == "1" || "$PORT_SET" == "1" || ! -t 0 ]]; then
         return 0
     fi
 
     local answer=""
-    read -r -p "Port für FamTask [${APP_PORT}]: " answer || answer=""
-    if [[ -n "$answer" ]]; then
-        APP_PORT="$answer"
-    fi
+    while true; do
+        read -r -p "Port für FamTask [${APP_PORT}]: " answer || answer=""
+        if [[ -z "$answer" ]]; then
+            return 0
+        fi
+        if [[ "$answer" =~ ^[0-9]+$ ]] && (( answer >= 1 && answer <= 65535 )); then
+            APP_PORT="$answer"
+            PORT_SET=1
+            return 0
+        fi
+        err "Bitte eine Zahl zwischen 1 und 65535 eingeben (Enter = ${APP_PORT})."
+    done
 }
 
 update_env_value() {

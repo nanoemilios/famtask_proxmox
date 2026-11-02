@@ -526,13 +526,16 @@ print_summary() {
     local ip
     ip=$(pct exec "$CTID" -- hostname -I 2>/dev/null | awk '{print $1}')
 
+    local app_suffix=""
+    [[ "$APP_PORT" == "80" ]] || app_suffix=":$APP_PORT"
+
     cat <<EOF
 
 ==========================================
  FamTask läuft im Container $CTID
 ==========================================
- App:        http://${ip}:${APP_PORT}
- Admin:      http://${ip}:${APP_PORT}/?action=admin
+ App:        http://${ip}${app_suffix}
+ Admin:      http://${ip}${app_suffix}/?action=admin
  phpMyAdmin: http://${ip}:${PMA_PORT}
 
  Container:  pct enter ${CTID}

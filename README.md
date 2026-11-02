@@ -24,8 +24,8 @@ Zusätzlich behoben:
   Release) automatisch auf `bookworm` zurück.
 - **Port-Auswahl:** `proxmox-install.sh` fragt den App-Port ab (Enter = 8888)
   und akzeptiert `--port` / `--pma-port` / `--db-port`; der One-Liner ebenso.
-  Explizit gesetzte Ports werden auch in einer bestehenden `docker/.env`
-  aktualisiert.
+  Explizit gesetzte Ports (`--port`, Umgebungsvariable oder Eingabe) werden
+  auch in einer bestehenden `docker/.env` aktualisiert.
 
 ---
 
